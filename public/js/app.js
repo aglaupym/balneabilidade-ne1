@@ -6,7 +6,7 @@ function msg(t,err){$("msg").textContent=t;$("msg").className=err?"err":""}
 function cls(s){s=(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");return /^impr/.test(s)?true:/^prop/.test(s)?false:null}
 
 function parseText(t){
-    // o pdf.js entrega o texto com espaços no meio ("ITA - 20", "0 1 / 1 0 /2026"): normaliza antes de ler
+  // o pdf.js entrega o texto com espaços no meio ("ITA - 20", "0 1 / 1 0 /2026"): normaliza antes de ler
   t=t.replace(/\s*\/\s*/g,"/").replace(/(\d)[ \t]+(?=\d)/g,"$1").replace(/\b([A-Z]{3})\s*-\s*(\d{2})\b/g,"$1-$2");
   const codes=new Set(P.map(p=>p[0])),ms=[...t.matchAll(/\b([A-Z]{3}-\d{2})\b/g)].filter(m=>codes.has(m[1])),out={};
   ms.forEach((m,i)=>{const end=i+1<ms.length?ms[i+1].index:t.length,c=t.slice(m.index+m[0].length,end).match(/\b(Impr[óo]pria|Pr[óo]pria)\b/i);
@@ -42,23 +42,36 @@ $("dl").onclick=()=>{
 };
 $("cp").onclick=async()=>{try{await navigator.clipboard.writeText(csv());msg("CSV copiado.")}catch(e){msg("Não foi possível copiar.",1)}};
 
-async function toJpeg(src){
-  const bmp=src instanceof HTMLCanvasElement?src:await createImageBitmap(src),k=Math.min(1,2000/bmp.width),c=document.createElement("canvas");
-  c.width=Math.round(bmp.width*k);c.height=Math.round(bmp.height*k);c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);
-  return new Promise(r=>c.toBlob(r,"image/jpeg",.88));
+// ---- Leitura de print: cor da coluna Classificação (ocr.js) + OCR só do cabeçalho para as datas ----
+async function toCanvas(src){
+  const bmp=src instanceof HTMLCanvasElement?src:await createImageBitmap(src),k=Math.min(3,Math.max(1,2000/bmp.width));
+  const w=Math.round(bmp.width*k),h=Math.round(bmp.height*k),c=document.createElement("canvas");
+  c.width=w;c.height=h;const x=c.getContext("2d",{willReadFrequently:true});
+  x.imageSmoothingQuality="high";x.fillStyle="#fff";x.fillRect(0,0,w,h);x.drawImage(bmp,0,0,w,h);
+  return c;
 }
-function blobToBase64(b){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=()=>rej(new Error("Falha ao preparar a imagem."));r.readAsDataURL(b)})}
-async function viaImage(blob){
-  msg("Lendo a imagem com IA (pode levar até 1 min)…");
-  let resp;
-  try{
-    resp=await fetch("/api/ler-imagem",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({image:await blobToBase64(blob),mediaType:blob.type||"image/jpeg",codes:P.map(p=>p[0])})});
-  }catch(e){throw new Error("Não foi possível falar com o servidor. Verifique a conexão ou envie o PDF original.")}
-  const r=await resp.json().catch(()=>({}));
-  if(!resp.ok)throw new Error(r.error||"Falha na leitura da imagem ("+resp.status+"). Envie o PDF original.");
-  const pt={};Object.keys(r.pontos||{}).forEach(k=>pt[k]=cls(r.pontos[k]));
-  return{pontos:pt,data:r.data||"",coleta:r.coleta||"",numero:r.numero||"",periodo:r.periodo||""};
+let ocrWorker=null;
+async function getOcr(){
+  if(!window.Tesseract)throw new Error("O leitor de texto não carregou.");
+  if(!ocrWorker){
+    const b=new URL("vendor/tesseract/",location.href).href;
+    ocrWorker=await Tesseract.createWorker("por",1,{workerPath:b+"worker.min.js",corePath:b,langPath:b+"lang",gzip:true});
+  }
+  return ocrWorker;
+}
+async function lerCabecalho(c){
+  const h=c.height>c.width?Math.round(c.height*0.30):c.height,cr=document.createElement("canvas");
+  cr.width=c.width;cr.height=h;cr.getContext("2d").drawImage(c,0,0,c.width,h,0,0,c.width,h);
+  const w=await getOcr(),r=await Promise.race([w.recognize(cr),new Promise((_,rej)=>setTimeout(()=>rej(new Error("tempo esgotado")),60000))]);
+  return parseText(r.data.text);
+}
+async function viaImage(src){
+  msg("Lendo a imagem…");
+  const c=await toCanvas(src),cor=corPontos(c.getContext("2d",{willReadFrequently:true}).getImageData(0,0,c.width,c.height));
+  if(cor.erro)throw new Error(cor.erro);
+  let m={data:"",coleta:"",numero:"",periodo:""};
+  try{m=await lerCabecalho(c)}catch(e){console.warn("Cabeçalho não lido:",e)}
+  return{pontos:cor.pontos,data:m.data||"",coleta:m.coleta||"",numero:m.numero||"",periodo:m.periodo||""};
 }
 async function pdfFile(file){
   if(!window.pdfjsLib)throw new Error("Leitor de PDF não carregou. Envie um print da página.");
@@ -69,15 +82,16 @@ async function pdfFile(file){
   msg("Texto do PDF incompleto; lendo como imagem…");
   const vp=pg.getViewport({scale:2}),c=document.createElement("canvas");c.width=vp.width;c.height=vp.height;
   await pg.render({canvasContext:c.getContext("2d"),viewport:vp}).promise;
-  return viaImage(await toJpeg(c));
+  return viaImage(c);
 }
 async function handle(file){
   if(!file)return;$("res").hidden=true;msg("Lendo "+(file.name||"imagem colada")+"…");
   try{
     const isPdf=file.type==="application/pdf"||/\.pdf$/i.test(file.name||"");
-    const r=isPdf?await pdfFile(file):await viaImage(await toJpeg(file));
+    const r=isPdf?await pdfFile(file):await viaImage(file);
     show(r);const miss=P.filter(p=>st[p[0]]===null).length;
-    msg(miss?"Leitura concluída com "+miss+" ponto(s) sem classificação.":"Pronto: confira os dados e baixe o CSV.",!!miss);
+    const semData=!$("dt").value.trim();
+    msg(miss?"Leitura concluída com "+miss+" ponto(s) sem classificação.":semData?"Praias lidas. A data não foi encontrada: digite no campo Data do documento.":"Pronto: confira os dados e baixe o CSV.",!!miss||semData);
   }catch(e){msg(e.message||(e.code?"Falha na leitura ("+e.code+").":"Não foi possível ler o arquivo."),1)}
 }
 const dz=$("drop");

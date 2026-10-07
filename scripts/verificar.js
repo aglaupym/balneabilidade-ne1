@@ -5,12 +5,15 @@ const raiz = path.join(__dirname, "..");
 const obrigatorios = [
   "public/index.html", "public/css/style.css", "public/js/praias.js", "public/js/app.js",
   "public/assets/bg-ne1.jpg", "public/assets/logo-ne1.png",
-  "public/vendor/pdf.min.js", "public/vendor/pdf.worker.min.js", "api/ler-imagem.js", "vercel.json"
+  "public/js/ocr.js", "public/vendor/pdf.min.js", "public/vendor/pdf.worker.min.js",
+  "public/vendor/tesseract/tesseract.min.js", "public/vendor/tesseract/worker.min.js",
+  "public/vendor/tesseract/tesseract-core-lstm.wasm.js", "public/vendor/tesseract/tesseract-core-simd-lstm.wasm.js",
+  "public/vendor/tesseract/lang/por.traineddata.gz", "vercel.json"
 ];
 const erros = [];
 obrigatorios.forEach(f => { if (!fs.existsSync(path.join(raiz, f))) erros.push("Arquivo ausente: " + f); });
 
-["public/js/praias.js", "public/js/app.js", "api/ler-imagem.js", "dev-server.js"].forEach(f => {
+["public/js/praias.js", "public/js/ocr.js", "public/js/app.js", "dev-server.js"].forEach(f => {
   try { execFileSync(process.execPath, ["--check", path.join(raiz, f)], { stdio: "pipe" }); }
   catch (e) { erros.push("Erro de sintaxe em " + f + "\n" + String(e.stderr || e.message)); }
 });

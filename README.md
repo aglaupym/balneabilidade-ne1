@@ -2,9 +2,10 @@
 
 Transforma o informativo de balneabilidade da CPRH (PDF ou print da 1ª página) em um CSV com as 27 praias, a classificação (Própria/Imprópria) e a data do documento. O CSV é usado pelo script `Balneabilidade.jsx` do After Effects.
 
-- **PDF:** lido no próprio navegador, sem custo.
-- **Print:** lido por IA através de uma função no servidor (precisa de uma chave da API da Anthropic).
-- Site estático em HTML, CSS e JavaScript puros. **Não tem dependências npm.**
+- **PDF:** o texto é lido no próprio navegador (pdf.js).
+- **Print:** as 27 linhas da tabela são achadas pela **cor** da coluna Classificação (vermelho = Imprópria, verde = Própria), e um OCR (Tesseract) lê o cabeçalho para pegar a data.
+- Tudo roda no navegador de quem abre a página: **sem servidor, sem chave de API e sem custo**.
+- Site estático em HTML, CSS e JavaScript puros. Não tem dependências npm.
 
 ## 1. Instalar
 
@@ -16,14 +17,6 @@ cd balneabilidade-ne1
 ```
 
 Não precisa de `npm install`.
-
-Só para ler **print**, crie o arquivo de configuração local:
-
-```bash
-cp .env.example .env      # no Windows: copy .env.example .env
-```
-
-e preencha `ANTHROPIC_API_KEY=` com a sua chave. Sem a chave, tudo funciona, menos a leitura de print.
 
 ## 2. Rodar localmente
 
@@ -48,9 +41,15 @@ A pasta que vai ao ar é `public/`.
 1. Suba o projeto para o GitHub.
 2. Em [vercel.com](https://vercel.com), clique em **Add New > Project** e importe o repositório.
 3. Não mude nenhuma configuração (o `vercel.json` já indica a pasta `public`) e clique em **Deploy**.
-4. Para a leitura de print: **Settings > Environment Variables**, adicione `ANTHROPIC_API_KEY` (opcionais: `ANTHROPIC_MODEL`, `RATE_LIMIT_PER_HOUR`) e faça um novo deploy (**Deployments > Redeploy**).
 
-O site fica público e sem login. A leitura de print gasta a **sua** chave: há limite por IP (20/hora por padrão, em melhor esforço), e vale definir também um limite de gasto no console da Anthropic.
+Não é preciso cadastrar nenhuma variável de ambiente.
+
+## Dicas para o print
+
+- Mostre a **tabela inteira** (as 27 linhas) e em **cores** (não preto e branco).
+- Se a data não for lida, digite no campo **Data do documento**.
+- Clique em qualquer classificação para corrigir, se necessário.
+- O PDF continua sendo o caminho mais exato.
 
 ## Estrutura
 
@@ -59,13 +58,13 @@ public/            site (é o que a Vercel publica)
   index.html
   css/style.css
   js/praias.js     lista das 27 praias (código CPRH → nome da comp)
+  js/ocr.js        detecção das linhas da tabela por cor (print)
   js/app.js        leitura, tabela e CSV
   assets/          fundo e logo NE1
-  vendor/          pdf.js (cópia local)
-api/ler-imagem.js  função serverless que lê o print
+  vendor/          pdf.js e Tesseract (cópias locais, sem CDN)
 dev-server.js      servidor local (npm run dev)
 scripts/verificar.js
-vercel.json  package.json  .env.example  .gitignore
+vercel.json  package.json  .gitignore
 ```
 
 ## Formato do CSV
