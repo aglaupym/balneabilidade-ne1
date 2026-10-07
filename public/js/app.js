@@ -6,6 +6,8 @@ function msg(t,err){$("msg").textContent=t;$("msg").className=err?"err":""}
 function cls(s){s=(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");return /^impr/.test(s)?true:/^prop/.test(s)?false:null}
 
 function parseText(t){
+    // o pdf.js entrega o texto com espaços no meio ("ITA - 20", "0 1 / 1 0 /2026"): normaliza antes de ler
+  t=t.replace(/\s*\/\s*/g,"/").replace(/(\d)[ \t]+(?=\d)/g,"$1").replace(/\b([A-Z]{3})\s*-\s*(\d{2})\b/g,"$1-$2");
   const codes=new Set(P.map(p=>p[0])),ms=[...t.matchAll(/\b([A-Z]{3}-\d{2})\b/g)].filter(m=>codes.has(m[1])),out={};
   ms.forEach((m,i)=>{const end=i+1<ms.length?ms[i+1].index:t.length,c=t.slice(m.index+m[0].length,end).match(/\b(Impr[óo]pria|Pr[óo]pria)\b/i);
     if(c&&!(m[1] in out))out[m[1]]=cls(c[1])});
