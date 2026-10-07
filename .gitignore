@@ -1,0 +1,21 @@
+# dependências
+node_modules/
+
+# segredos e configuração local (NUNCA subir)
+.env
+.env.*
+!.env.example
+
+# Vercel
+.vercel/
+
+# sistema / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# logs e temporários
+*.log
+npm-debug.log*
+*.zip
